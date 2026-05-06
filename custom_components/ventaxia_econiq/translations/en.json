@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Vent-Axia Econiq",
+        "description": "Connect to your Vent-Axia Econiq unit's built-in MQTT broker. Credentials are extracted from the Vent-Axia Connect app's local storage; see the README for the recipe.",
+        "data": {
+          "host": "Host or IP",
+          "port": "Port",
+          "identity": "TLS-PSK identity (32 hex chars)",
+          "psk_key": "TLS-PSK key (16 hex chars)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the unit. Verify host/port reachability and that no firewall blocks port 8883.",
+      "invalid_auth": "TLS-PSK or MQTT auth was rejected. Re-extract the credentials from the Vent-Axia Connect app.",
+      "unknown": "Unexpected error. Check the logs for details."
+    },
+    "abort": {
+      "already_configured": "This Vent-Axia Econiq unit is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "t1_outdoor_intake": { "name": "Outdoor intake temperature" },
+      "t2_supply": { "name": "Supply air temperature" },
+      "t3_extract": { "name": "Extract air temperature" },
+      "t4_exhaust": { "name": "Exhaust air temperature" },
+      "indoor_rh": { "name": "Indoor humidity" },
+      "extract_rh": { "name": "Extract humidity" },
+      "indoor_co2": { "name": "Indoor CO₂" },
+      "supply_airflow": { "name": "Supply airflow" },
+      "extract_airflow": { "name": "Extract airflow" },
+      "supply_rpm": { "name": "Supply fan RPM" },
+      "extract_rpm": { "name": "Extract fan RPM" },
+      "supply_pwm": { "name": "Supply fan PWM" },
+      "extract_pwm": { "name": "Extract fan PWM" },
+      "supply_power": { "name": "Supply fan power" },
+      "extract_power": { "name": "Extract fan power" },
+      "total_power": { "name": "Total power" },
+      "faults": { "name": "Faults" },
+      "warnings": { "name": "Warnings" },
+      "wifi_rssi": { "name": "WiFi signal" },
+      "override": { "name": "Operating override" },
+      "current_airflow_program": { "name": "Current airflow program" },
+      "heat_recovery_efficiency": { "name": "Heat recovery efficiency" }
+    }
+  }
+}
