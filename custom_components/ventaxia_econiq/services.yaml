@@ -1,0 +1,44 @@
+set_user_override:
+  name: Set user override
+  description: Override the unit's airflow mode for a fixed duration. The unit auto-resumes its schedule when the duration expires.
+  fields:
+    mode:
+      name: Mode
+      description: Airflow mode to apply.
+      required: true
+      selector:
+        select:
+          options:
+            - "off"
+            - low
+            - normal
+            - boost
+            - purge
+            - none
+            - max
+    duration:
+      name: Duration
+      description: How long the override should run before auto-resuming the schedule.
+      required: true
+      default: "01:00:00"
+      selector:
+        duration: {}
+    device_id:
+      name: Device
+      description: Required only if multiple Vent-Axia Econiq units are configured.
+      required: false
+      selector:
+        device:
+          integration: ventaxia_econiq
+
+cancel_user_override:
+  name: Cancel user override
+  description: Cancel the active override and resume the unit's schedule.
+  fields:
+    device_id:
+      name: Device
+      description: Required only if multiple Vent-Axia Econiq units are configured.
+      required: false
+      selector:
+        device:
+          integration: ventaxia_econiq

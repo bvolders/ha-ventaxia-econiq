@@ -10,15 +10,18 @@ import json
 import logging
 import socket
 import ssl
+from datetime import timedelta
 from typing import Any, Callable
 
 import paho.mqtt.client as mqtt
+import voluptuous as vol
 from paho.mqtt.enums import CallbackAPIVersion
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CANCEL_PAYLOAD,
@@ -29,10 +32,12 @@ from .const import (
     CONF_PSK_KEY,
     CONF_TOPIC_PREFIX,
     DOMAIN,
+    MODE_TO_GTM,
     RECONNECT_BACKOFF_INITIAL_SECONDS,
     RECONNECT_BACKOFF_MAX_SECONDS,
     TOPIC_USER_OVERRIDE,
 )
+from .helpers import format_treq
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -260,6 +265,81 @@ class VentAxiaEconiqCoordinator:
 
 
 # ----------------------------------------------------------------------
+# Services
+
+SERVICE_SET_USER_OVERRIDE = "set_user_override"
+SERVICE_CANCEL_USER_OVERRIDE = "cancel_user_override"
+_SERVICES_REGISTERED = "ventaxia_econiq_services_registered"
+
+SET_USER_OVERRIDE_SCHEMA = vol.Schema(
+    {
+        vol.Required("mode"): vol.In(list(MODE_TO_GTM.keys())),
+        vol.Required("duration", default="01:00:00"): cv.time_period,
+        vol.Optional("device_id"): cv.string,
+    }
+)
+
+CANCEL_USER_OVERRIDE_SCHEMA = vol.Schema(
+    {
+        vol.Optional("device_id"): cv.string,
+    }
+)
+
+
+def _coordinator_for_call(hass: HomeAssistant, call) -> VentAxiaEconiqCoordinator:
+    """Resolve which coordinator a service call targets."""
+    coordinators: dict[str, VentAxiaEconiqCoordinator] = hass.data.get(DOMAIN, {})
+    if not coordinators:
+        raise HomeAssistantError("ventaxia_econiq is not configured")
+
+    device_id = call.data.get("device_id")
+    if device_id is None:
+        if len(coordinators) > 1:
+            raise HomeAssistantError(
+                "Multiple Vent-Axia units configured; pass `device_id` to disambiguate"
+            )
+        return next(iter(coordinators.values()))
+
+    from homeassistant.helpers import device_registry as dr
+    registry = dr.async_get(hass)
+    device = registry.async_get(device_id)
+    if device is None:
+        raise HomeAssistantError(f"unknown device_id: {device_id}")
+    for entry_id in device.config_entries:
+        if entry_id in coordinators:
+            return coordinators[entry_id]
+    raise HomeAssistantError(f"device_id {device_id} is not a Vent-Axia unit")
+
+
+async def _async_register_services(hass: HomeAssistant) -> None:
+    """Register HA services. Idempotent."""
+    if hass.data.get(_SERVICES_REGISTERED):
+        return
+
+    async def _set_user_override(call) -> None:
+        coordinator = _coordinator_for_call(hass, call)
+        mode: str = call.data["mode"]
+        duration: timedelta = call.data["duration"]
+        gtm = MODE_TO_GTM[mode]
+        treq = format_treq(duration)
+        await coordinator.publish_user_override(gtm=gtm, treq=treq)
+
+    async def _cancel_user_override(call) -> None:
+        coordinator = _coordinator_for_call(hass, call)
+        await coordinator.publish_cancel_override()
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_USER_OVERRIDE, _set_user_override,
+        schema=SET_USER_OVERRIDE_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CANCEL_USER_OVERRIDE, _cancel_user_override,
+        schema=CANCEL_USER_OVERRIDE_SCHEMA,
+    )
+    hass.data[_SERVICES_REGISTERED] = True
+
+
+# ----------------------------------------------------------------------
 # HA entry points
 
 
@@ -267,6 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = VentAxiaEconiqCoordinator(hass, entry)
     await coordinator.async_start()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
