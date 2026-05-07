@@ -65,6 +65,9 @@
     },
     "binary_sensor": {
       "override_active": { "name": "Override active" }
+    },
+    "climate": {
+      "mvhr": { "name": "MVHR" }
     }
   },
   "services": {

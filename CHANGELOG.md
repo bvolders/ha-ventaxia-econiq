@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 — 2026-05-07
+
+### Added
+
+- **`climate.<unit>_mvhr`** — exposes the unit as a `climate` entity so HA categorises the device under Climate. Modes: `OFF` and `FAN_ONLY`. Fan modes mirror the select (`off`/`low`/`normal`). `current_temperature` from the extract air sensor (`io/t3`). No `target_temperature` — the MVHR doesn't aim for a setpoint, it just moves air.
+
 ## v0.2.0 — 2026-05-07
 
 ### Added — write capability

@@ -2,7 +2,7 @@
 
 A local-push Home Assistant integration for the **Vent-Axia Sentinel Econiq 600** MVHR ventilation unit, talking directly to the unit's built-in MQTT broker over TLS-PSK. No cloud, no broker, no polling — when the unit publishes a value, HA gets it within milliseconds.
 
-> **Status: v0.2.0 — read + write.** 17 telemetry sensors plus a 7-mode fan select, override duration, BBQ-bypass button, override-active/remaining sensors, and two services for automations. Wire format validated on a live unit — see [`tools/trace_unit.results.md`](./tools/trace_unit.results.md).
+> **Status: v0.2.1 — read + write + climate.** 17 telemetry sensors, a 3-mode fan select, override duration, BBQ-bypass button, override-active/remaining sensors, two services for automations, and a `climate` entity so HA categorises the device under Climate. Wire format validated on a live unit — see [`tools/trace_unit.results.md`](./tools/trace_unit.results.md).
 
 [![hassfest validation](https://github.com/bvolders/ha-ventaxia-econiq/actions/workflows/validate.yml/badge.svg)](https://github.com/bvolders/ha-ventaxia-econiq/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
