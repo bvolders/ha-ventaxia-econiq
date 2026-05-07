@@ -41,7 +41,7 @@ from .helpers import format_treq
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT]
 
 
 def build_psk_context(identity: str, psk_hex: str) -> ssl.SSLContext:
