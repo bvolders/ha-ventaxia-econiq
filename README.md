@@ -2,7 +2,7 @@
 
 A local-push Home Assistant integration for the **Vent-Axia Sentinel Econiq 600** MVHR ventilation unit, talking directly to the unit's built-in MQTT broker over TLS-PSK. No cloud, no broker, no polling — when the unit publishes a value, HA gets it within milliseconds.
 
-> **Status: v0.1.0 — read-only.** All 17 telemetry sensors live and updating. Control entities (fan-mode select, summer bypass, BBQ-bypass timer) are next-up for v0.2 — see [Roadmap](#roadmap).
+> **Status: v0.2.0 — read + write.** 17 telemetry sensors plus a 7-mode fan select, override duration, BBQ-bypass button, override-active/remaining sensors, and two services for automations. Wire format validated on a live unit — see [`tools/trace_unit.results.md`](./tools/trace_unit.results.md).
 
 [![hassfest validation](https://github.com/bvolders/ha-ventaxia-econiq/actions/workflows/validate.yml/badge.svg)](https://github.com/bvolders/ha-ventaxia-econiq/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -109,31 +109,27 @@ Easier — `adb backup -f vent.ab uk.ventaxia.connect` then unpack with `abe.jar
 - **Why hex-decode the PSK.** The app stores the PSK as a hex string. The actual PSK *bytes* are the hex-decoded form, not the ASCII-encoded form of the hex string. Sending the ASCII form fails MAC verification with "bad record mac" (TLS alert 20). The integration does `bytes.fromhex(psk_hex)` before passing to `set_psk_client_callback`.
 - **The MQTT topic prefix.** Each unit publishes everything under a single root segment derived from its serial (e.g., `BZPKB-7588F`). The integration auto-discovers this on first connect by subscribing to `#` and taking the first segment of any incoming publish.
 
-## Roadmap
+## Verified mode map
 
-### v0.2 — Control entities
-
-The write-side topic and payload schema are already mapped (Hermes bytecode disassembly of the official Android app's React-Native bundle):
+The write-side topic and payload schema were validated on a live BZPKB-7588F unit on 2026-05-07 (see [`tools/trace_unit.results.md`](./tools/trace_unit.results.md) for the full capture):
 
 - **Topic**: `<prefix>/vent/uo` (user override)
 - **Payload**: `{"gtm": <int>, "treq": "HH:MM:SS"}`
-- **Mode integers** (the `AirflowPreset` enum extracted from app function `31116`):
-  | `gtm` | Mode |
-  |---|---|
-  | 0 | Off |
-  | 1 | Low |
-  | 2 | Normal |
-  | 3 | Boost |
-  | 4 | Purge |
-  | 254 | None |
-  | 255 | Max |
+- **Mode integers** (the `AirflowPreset` enum from Hermes bytecode function `31116`, all confirmed accepted by firmware):
 
-Once bench-tested on a live unit, v0.2 will ship:
+  | `gtm` | Mode | Notes |
+  |---|---|---|
+  | 0 | Off | Halts both fans (RPM → 0). |
+  | 1 | Low | RPM ~900-1380. |
+  | 2 | Normal | RPM ~1315-1718. |
+  | 3 | Boost | RPM ~1685. |
+  | 4 | Purge | High extract. |
+  | 254 | None | **Cancel** — silently resumes the schedule (no `vent/cor` echo). |
+  | 255 | Max | Same `vent/cor` echo class as Boost/Purge. |
 
-- A `select` entity with the seven modes
-- A `number` entity for override duration (15-minute increments matching the unit's UI)
-- A **"BBQ bypass" button** that one-taps `{"gtm": 0, "treq": "01:00:00"}` for 1 hour of total intake silence (e.g., when neighbours barbecue and the F7 filter can't keep up with smoke)
-- A `select` for summer-bypass mode via `vent/sbc/wr`
+**Caveat:** the `(ot, os)` tuple on `vent/cor` does not uniquely identify the user-visible mode (off/low/normal collapse to `(9, 129)`; boost/purge/max collapse to `(10, 130)`). The `select` entity therefore reflects the last successful write rather than a derived state. Mode changes from the unit's physical keypad do not update the HA select — known limitation. The `binary_sensor.override_active` and `sensor.override_remaining` are still accurate because they only need to know whether *some* override is running, not which one.
+
+## Roadmap
 
 ### v0.3 — In-HA BLE pairing (eliminates the manual credential extraction)
 
