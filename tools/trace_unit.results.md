@@ -1,71 +1,59 @@
-# Phase A trace + probe — partial findings
+# Phase A — wire-format findings
 
-**Status:** INCOMPLETE. Capture was interrupted when the unit's MQTT broker hung
-during the session (TCP 8883 + 80 + 443 all became unreachable; HA sensors went
-Unavailable). Recovery is a unit power-cycle. To resume, repeat the active
-probe (`tools/probe_uo_sweep.py`) once the unit is back online.
+**Captured:** 2026-05-07, BZPKB-7588F (Vent-Axia Econiq 600).
+**Method:** active probe (`tools/probe_uo_sweep.py` + `tools/probe_uo_extras.py` + `tools/probe_gtm255.py`).
 
-## What we observed
+> **Why active rather than passive:** the unit's MQTT broker has a small connection budget. Concurrent sessions (HA + a passive trace + the iOS Connect app) caused the broker to hang, requiring a unit power-cycle to recover. Additionally, when the iOS app connected, our passive trace stopped receiving messages. Active probing with a single short-lived client is the practical path.
 
-### Connectivity-model finding (important)
+## Topic & payload
 
-The unit's broker enforces something close to single-session-per-identity.
-When the user opened the Vent-Axia Connect app, our `trace_unit.py` session
-silently stopped receiving messages even though paho still believed it was
-connected. This means:
+- **Write topic:** `<prefix>/vent/uo`
+- **Payload:** `{"gtm": <int>, "treq": "HH:MM:SS"}`
+- **Echo topic:** `<prefix>/vent/cor` (operating override status — JSON `{ot, os, trem, treq}`)
+- **Auxiliary state:** `<prefix>/vent/caf` publishes `{ps, prop}` after a mode change
 
-- **Passive observation while the user drives the Connect app does NOT work.**
-  As soon as the app connects, our trace gets booted (or the app's writes are
-  routed somewhere we don't see).
-- The fix is **active probing** with the integration's own credentials, ideally
-  with HA temporarily detached (or accepting that HA will briefly disconnect).
-  See `tools/probe_uo_sweep.py`.
+## gtm → behavior table
 
-### Idle / no-override echo
+| gtm | mode   | `vent/cor` echo (canonical)                                          | `vent/caf.ps` | RPM range | Notes |
+|-----|--------|---------------------------------------------------------------------|---------------|-----------|-------|
+| 0   | off    | `{"ot":9,"os":129,"trem":"<ts>","treq":"00:01:00"}` (also briefly `(16,129)` in transition) | 0 | supply→0, extract→0 | Halts both fans cleanly. PWM 48→0, power 31W→1W. |
+| 1   | low    | `{"ot":9,"os":129,"trem":"<ts>","treq":"00:01:00"}`                  | (not captured) | 914-1376  | |
+| 2   | normal | `{"ot":9,"os":129,"trem":"<ts>","treq":"00:01:00"}`                  | (not captured) | 1315-1718 | |
+| 3   | boost  | `{"ot":10,"os":130,"trem":"","treq":"00:00:00"}` (transitional capture) | (not captured) | ~1686 (steady) | The empty trem/treq is the FIRST echo; a later steady echo with proper trem may follow. |
+| 4   | purge  | `{"ot":10,"os":130,"trem":"","treq":"00:00:00"}`                     | 2 | extract spikes 381→1736, supply dips then climbs | |
+| 254 | (cancel) | **No echo on `vent/cor`** | (not captured) | RPMs return to schedule baseline (~1690) | Confirmed cancel mechanism. |
+| 255 | max    | `{"ot":10,"os":130,"trem":"","treq":"00:00:00"}`                     | (not captured) | (already high)| Confirmed supported. |
 
-```
-vent/cor: {"ot":1,"os":130,"trem":"","treq":"00:00:00"}
-```
+**Idle baseline** (no override active): `vent/cor: {"ot":1,"os":130,"trem":"","treq":"00:00:00"}`.
 
-Captured at session start, when the unit was running its baseline schedule.
-`trem=""` (empty string, not `"00:00:00"`) seems to mean "no countdown active".
-`treq="00:00:00"` matches.
+## Critical finding: `(ot, os)` does NOT uniquely identify the mode
 
-**Tentatively:** `IDLE_OT_OS = (1, 130)` — but this is one observation, and the
-unit also publishes (1, 130) when actively in Low mode following a schedule.
-We may need more data to distinguish "idle" from "schedule-running-Low".
+The `(ot, os)` pair on `vent/cor` collapses modes into three buckets:
 
-### Mode-to-(ot, os) map
+- `(ot=1, os=130)` — idle (no override running)
+- `(ot=9, os=129)` — "low-class" override running (off / low / normal all map here)
+- `(ot=10, os=130)` — "high-class" override running (boost / purge / max all map here)
+- `(ot=16, os=129)` — brief transition state (seen during off-mode setup)
 
-**NOT YET CAPTURED.** The active probe sweep (`tools/probe_uo_sweep.py`) was
-written but never ran successfully — TCP to 10.1.5.33:8883 timed out at the
-moment we tried. Re-run the probe after the unit power-cycle.
+This means **we cannot derive the user-visible mode from `vent/cor`**. The integration must use **last-written mode** as the select's reported state. `vent/cor` is still useful for:
 
-### Cancel mechanism
+- `binary_sensor.override_active` — True iff `ot ∈ {9, 10, 16}`, False iff `ot == 1`.
+- `sensor.override_remaining` — parses `trem` (a wall-clock timestamp when the override started, or `""`) and `treq` (the requested duration) to compute how much time is left.
 
-**NOT YET CAPTURED.** The Hermes-bytecode evidence still says `gtm=254`
-("None") is the canonical cancel value, but this is unverified on-the-wire.
-The probe sweep includes 254 in its sweep list.
+`vent/caf.ps` MAY allow finer disambiguation (we saw ps=0 for off, ps=2 for purge), but the data is incomplete. Out of scope for v0.2.
 
-## Resuming Phase A
+## Cancel mechanism (confirmed)
 
-Once the unit is back on the network:
+- Publish `{"gtm": 254, "treq": "00:01:00"}` (or any treq) to `<prefix>/vent/uo`.
+- The unit silently cancels the active override and resumes its schedule.
+- No `vent/cor` echo is published; the absence of an echo combined with RPMs returning to baseline is the only confirmation.
 
-1. Confirm reachability: `ssh bert@blackbox '/var/packages/ContainerManager/target/usr/bin/docker exec homeassistant python3 -c "import socket;s=socket.socket();s.settimeout(3);s.connect((\"10.1.5.33\",8883));print(\"ok\")"'`
-2. Source credentials from HA's storage (see `tools/probe_uo_sweep.py` docstring).
-3. Run the sweep: `python3 /tmp/probe_uo_sweep.py` from inside the HA container with the env vars set.
-4. Curate the printed `SWEEP SUMMARY` table into the "Mode → wire mapping" section below.
-5. Update `custom_components/ventaxia_econiq/const.py`'s `OT_OS_TO_MODE`,
-   `IDLE_OT_OS`, and `CANCEL_PAYLOAD` from these values.
+The integration's `cancel_user_override` service uses this exact publish.
 
-## Mode → wire mapping (TO BE FILLED AFTER RESUMING)
+## Implications for v0.2 design (updates the original spec)
 
-| gtm | label | vent/cor echo (ot, os) | supply RPM range | extract RPM range | notes |
-|---|---|---|---|---|---|
-| 0   | off    | TBD | TBD | TBD | |
-| 1   | low    | (1, 130)? | TBD | TBD | possibly same as idle |
-| 2   | normal | TBD | TBD | TBD | |
-| 3   | boost  | TBD | TBD | TBD | memory says (9, 129) — confirm |
-| 4   | purge  | TBD | TBD | TBD | |
-| 254 | none   | TBD | TBD | TBD | likely cancel |
-| 255 | max    | TBD | TBD | TBD | |
+1. **`MODE_TO_GTM`** ships all 7 values: `off=0, low=1, normal=2, boost=3, purge=4, none=254, max=255`. (`none` may be exposed in the select as a manual cancel option, though `cancel_user_override` is the canonical cancel.)
+2. **`OT_OS_TO_MODE`** is dropped — the data shows it can't reverse-map cleanly. The select uses last-written-only state. Documented as a known limitation: physical-keypad mode changes won't update the HA select.
+3. **Optimistic-revert timer** is dropped from the select. Since we can't confirm which mode the unit is in via `vent/cor`, there's nothing to revert TO. Instead, we trust the broker's publish-acknowledgement: if `publish_user_override` succeeds (broker ack within 5 s), the select state stays at the chosen mode. If publish fails, we raise `HomeAssistantError` and leave the select state unchanged.
+4. **`IDLE_OT_OS = (1, 130)`** powers `binary_sensor.override_active`.
+5. **`CANCEL_PAYLOAD = {"gtm": 254, "treq": "00:00:00"}`**. Topic: `vent/uo` (same as set_user_override).
