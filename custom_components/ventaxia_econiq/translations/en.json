@@ -44,7 +44,61 @@
       "wifi_rssi": { "name": "WiFi signal" },
       "override": { "name": "Operating override" },
       "current_airflow_program": { "name": "Current airflow program" },
-      "heat_recovery_efficiency": { "name": "Heat recovery efficiency" }
+      "heat_recovery_efficiency": { "name": "Heat recovery efficiency" },
+      "override_remaining": { "name": "Override remaining" }
+    },
+    "select": {
+      "fan_mode": {
+        "name": "Fan mode",
+        "state": {
+          "off": "Off",
+          "low": "Low",
+          "normal": "Normal",
+          "boost": "Boost",
+          "purge": "Purge",
+          "none": "None",
+          "max": "Max"
+        }
+      }
+    },
+    "number": {
+      "override_duration": { "name": "Override duration" }
+    },
+    "button": {
+      "bbq_bypass": { "name": "BBQ bypass (2h off)" }
+    },
+    "binary_sensor": {
+      "override_active": { "name": "Override active" }
+    }
+  },
+  "services": {
+    "set_user_override": {
+      "name": "Set user override",
+      "description": "Override the unit's airflow mode for a fixed duration.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Airflow mode to apply."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "How long the override should run before auto-resuming."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "Required only if multiple Vent-Axia Econiq units are configured."
+        }
+      }
+    },
+    "cancel_user_override": {
+      "name": "Cancel user override",
+      "description": "Cancel the active override and resume the unit's schedule.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Required only if multiple Vent-Axia Econiq units are configured."
+        }
+      }
     }
   }
 }
