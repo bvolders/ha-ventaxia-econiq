@@ -68,6 +68,9 @@ class EconiqClimate(ClimateEntity):
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
+    # HA 2024.2+ requires this when declaring TURN_ON/TURN_OFF explicitly,
+    # or the entity is silently dropped during registration.
+    _enable_turn_on_off_backwards_compatibility = False
 
     def __init__(self, coordinator: VentAxiaEconiqCoordinator) -> None:
         self._coordinator = coordinator
