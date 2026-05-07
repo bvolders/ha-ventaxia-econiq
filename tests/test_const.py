@@ -6,6 +6,7 @@ from custom_components.ventaxia_econiq.const import (
     CANCEL_TOPIC_SUFFIX,
     IDLE_OT,
     MODE_TO_GTM,
+    SELECT_MODES,
     TOPIC_USER_OVERRIDE,
 )
 
@@ -14,8 +15,14 @@ def test_topic_user_override_is_vent_uo() -> None:
     assert TOPIC_USER_OVERRIDE == "vent/uo"
 
 
-def test_mode_to_gtm_has_seven_modes() -> None:
+def test_mode_to_gtm_keeps_full_enum() -> None:
+    """All 7 AirflowPreset values stay in the map for future RE work."""
     assert set(MODE_TO_GTM) == {"off", "low", "normal", "boost", "purge", "none", "max"}
+
+
+def test_select_modes_only_exposes_validated_three() -> None:
+    """v0.2: only off/low/normal produce a real timed override on vent/uo."""
+    assert SELECT_MODES == ("off", "low", "normal")
 
 
 def test_mode_to_gtm_canonical_mapping() -> None:

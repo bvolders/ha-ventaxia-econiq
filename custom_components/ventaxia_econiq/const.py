@@ -29,8 +29,12 @@ RECONNECT_BACKOFF_MAX_SECONDS: Final = 300
 # Topic suffix (under <prefix>/) where airflow-mode overrides are published.
 TOPIC_USER_OVERRIDE: Final = "vent/uo"
 
-# AirflowPreset enum from Hermes bytecode function 31116, confirmed by Phase A
-# probe sweeps. All 7 values accepted by the unit's firmware.
+# AirflowPreset enum from Hermes bytecode function 31116. Phase A (2026-05-07)
+# confirmed all 7 values are *accepted* by the firmware, BUT only off/low/normal
+# produce a properly-timed override on `vent/uo`. Boost/purge/max publish cleanly
+# yet the unit echoes vent/cor with empty trem and zero treq, indicating the
+# unit silently rejected the timed-override aspect — the Connect app likely uses
+# a different write path (vent/caf/wr or vent/cm/wr) for those.
 MODE_TO_GTM: Final[dict[str, int]] = {
     "off": 0,
     "low": 1,
@@ -40,6 +44,11 @@ MODE_TO_GTM: Final[dict[str, int]] = {
     "none": 254,  # canonical "no override / cancel" sentinel
     "max": 255,
 }
+
+# Modes exposed in the v0.2 user-facing select + service schema. The other
+# entries in MODE_TO_GTM stay reserved for future investigation but aren't
+# offered to users yet.
+SELECT_MODES: Final[tuple[str, ...]] = ("off", "low", "normal")
 
 # vent/cor.ot value when no override is active (unit follows its schedule).
 # Phase A: idle echoes (ot=1, os=130, trem="", treq="00:00:00").

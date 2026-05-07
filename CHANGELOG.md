@@ -4,7 +4,7 @@
 
 ### Added — write capability
 
-- **`select.<unit>_fan_mode`** — 7-mode airflow override (Off / Low / Normal / Boost / Purge / None / Max). State reflects the last successful write.
+- **`select.<unit>_fan_mode`** — 3-mode airflow override (Off / Low / Normal). State reflects the last successful write. Boost/Purge/Max are intentionally omitted from this release — see the "Verified mode map" section of the README for the firmware behavior we observed.
 - **`number.<unit>_override_duration`** — how long the next override should run (15-480 min, 15-min step). Persists across HA restarts.
 - **`button.<unit>_bbq_bypass`** — one-tap 2 h of total intake silence (`gtm=0`).
 - **`binary_sensor.<unit>_override_active`** — True while the unit is running a user override (any non-idle `vent/cor.ot`).

@@ -20,7 +20,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import VentAxiaEconiqCoordinator
-from .const import DOMAIN, MODE_TO_GTM
+from .const import DOMAIN, SELECT_MODES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class EconiqFanModeSelect(SelectEntity):
         self._coordinator = coordinator
         self._default_duration_provider = default_duration_provider
         self._attr_unique_id = f"{coordinator.device_id}_fan_mode"
-        self._attr_options = list(MODE_TO_GTM.keys())
+        self._attr_options = list(SELECT_MODES)
         self._current_option: str | None = None
 
     @property
@@ -82,7 +82,7 @@ class EconiqFanModeSelect(SelectEntity):
         self.async_on_remove(self._coordinator.subscribe_connection(_on_conn))
 
     async def async_select_option(self, option: str) -> None:
-        if option not in MODE_TO_GTM:
+        if option not in SELECT_MODES:
             raise ValueError(f"unknown mode: {option}")
 
         duration_minutes = self._default_duration_provider()

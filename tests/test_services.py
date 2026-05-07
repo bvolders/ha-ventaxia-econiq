@@ -56,11 +56,25 @@ async def test_set_user_override_translates_mode_and_duration(
     await hass.services.async_call(
         DOMAIN,
         "set_user_override",
-        {"mode": "boost", "duration": "00:30:00"},
+        {"mode": "normal", "duration": "00:30:00"},
         blocking=True,
     )
 
-    coordinator.publish_user_override.assert_awaited_once_with(gtm=3, treq="00:30:00")
+    coordinator.publish_user_override.assert_awaited_once_with(gtm=2, treq="00:30:00")
+
+
+async def test_set_user_override_rejects_unsupported_mode(
+    hass, mock_entry_with_coordinator
+) -> None:
+    """boost/purge/max are in MODE_TO_GTM but not in SELECT_MODES — service rejects."""
+    await _async_register_services(hass)
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "set_user_override",
+            {"mode": "boost", "duration": "00:30:00"},
+            blocking=True,
+        )
 
 
 async def test_set_user_override_rejects_unknown_mode(

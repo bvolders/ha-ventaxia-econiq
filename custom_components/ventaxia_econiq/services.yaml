@@ -4,7 +4,7 @@ set_user_override:
   fields:
     mode:
       name: Mode
-      description: Airflow mode to apply.
+      description: "Airflow mode to apply. v0.2 supports off/low/normal as proper timed overrides; the firmware routes boost/purge/max via a different write path that has not yet been reverse-engineered."
       required: true
       selector:
         select:
@@ -12,10 +12,6 @@ set_user_override:
             - "off"
             - low
             - normal
-            - boost
-            - purge
-            - none
-            - max
     duration:
       name: Duration
       description: How long the override should run before auto-resuming the schedule.

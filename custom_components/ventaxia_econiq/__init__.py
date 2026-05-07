@@ -35,6 +35,7 @@ from .const import (
     MODE_TO_GTM,
     RECONNECT_BACKOFF_INITIAL_SECONDS,
     RECONNECT_BACKOFF_MAX_SECONDS,
+    SELECT_MODES,
     TOPIC_USER_OVERRIDE,
 )
 from .helpers import format_treq
@@ -279,7 +280,7 @@ _SERVICES_REGISTERED = "ventaxia_econiq_services_registered"
 
 SET_USER_OVERRIDE_SCHEMA = vol.Schema(
     {
-        vol.Required("mode"): vol.In(list(MODE_TO_GTM.keys())),
+        vol.Required("mode"): vol.In(list(SELECT_MODES)),
         vol.Required("duration", default="01:00:00"): cv.time_period,
         vol.Optional("device_id"): cv.string,
     }

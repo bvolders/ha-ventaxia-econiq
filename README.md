@@ -127,7 +127,13 @@ The write-side topic and payload schema were validated on a live BZPKB-7588F uni
   | 254 | None | **Cancel** — silently resumes the schedule (no `vent/cor` echo). |
   | 255 | Max | Same `vent/cor` echo class as Boost/Purge. |
 
-**Caveat:** the `(ot, os)` tuple on `vent/cor` does not uniquely identify the user-visible mode (off/low/normal collapse to `(9, 129)`; boost/purge/max collapse to `(10, 130)`). The `select` entity therefore reflects the last successful write rather than a derived state. Mode changes from the unit's physical keypad do not update the HA select — known limitation. The `binary_sensor.override_active` and `sensor.override_remaining` are still accurate because they only need to know whether *some* override is running, not which one.
+**Two firmware caveats observed in Phase A:**
+
+1. **`(ot, os)` does not uniquely identify the user-visible mode** (off/low/normal collapse to `(9, 129)`; boost/purge/max collapse to `(10, 130)`). The `select` entity therefore reflects the last successful write rather than a derived state. Mode changes from the unit's physical keypad do not update the HA select — known limitation. The `binary_sensor.override_active` and `sensor.override_remaining` are still accurate because they only need to know whether *some* override is running, not which one.
+
+2. **Only off/low/normal produce a real timed override on `vent/uo`.** Boost/purge/max publish cleanly and the unit echoes `vent/cor`, but with empty `trem` and zero `treq` — i.e., the unit silently rejects the timed-override aspect and returns to its schedule baseline. The Connect app must use a different write path for those modes (likely `vent/caf/wr` or `vent/cm/wr`, neither yet reverse-engineered). v0.2 therefore exposes only off/low/normal in the select and the service schema. The `MODE_TO_GTM` constant retains all seven enum values for future investigation.
+
+3. **The unit's MQTT broker is single-session-per-identity.** While HA holds the connection, the iOS Connect app cannot connect, and vice versa. This is expected behavior — close the app to let HA reconnect, or close HA's integration before opening the app.
 
 ## Roadmap
 

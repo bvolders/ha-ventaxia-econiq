@@ -53,11 +53,7 @@
         "state": {
           "off": "Off",
           "low": "Low",
-          "normal": "Normal",
-          "boost": "Boost",
-          "purge": "Purge",
-          "none": "None",
-          "max": "Max"
+          "normal": "Normal"
         }
       }
     },
