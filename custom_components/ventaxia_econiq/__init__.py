@@ -6,6 +6,7 @@ PSK-AES128-CBC-SHA) and publishes telemetry as HA sensor entities.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import socket
 import ssl
@@ -17,9 +18,11 @@ from paho.mqtt.enums import CallbackAPIVersion
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 
 from .const import (
+    CANCEL_PAYLOAD,
+    CANCEL_TOPIC_SUFFIX,
     CONF_HOST,
     CONF_IDENTITY,
     CONF_PORT,
@@ -28,6 +31,7 @@ from .const import (
     DOMAIN,
     RECONNECT_BACKOFF_INITIAL_SECONDS,
     RECONNECT_BACKOFF_MAX_SECONDS,
+    TOPIC_USER_OVERRIDE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,6 +123,45 @@ class VentAxiaEconiqCoordinator:
                 self._connection_listeners.remove(callback_)
 
         return _unsub
+
+    # ------------------------------------------------------------------
+    # Public write API
+
+    async def publish_user_override(self, gtm: int, treq: str) -> None:
+        """Publish a user-override (mode + duration) to the unit.
+
+        Topic: ``<prefix>/vent/uo``
+        Payload: ``{"gtm": <int>, "treq": "HH:MM:SS"}``
+
+        Blocks until the broker acknowledges the publish (max 5s).
+        Raises HomeAssistantError on disconnect or timeout.
+        """
+        await self._publish_payload(TOPIC_USER_OVERRIDE, {"gtm": gtm, "treq": treq})
+
+    async def publish_cancel_override(self) -> None:
+        """Publish the cancel sentinel (gtm=254) to vent/uo.
+
+        Confirmed in Phase A: this resumes the unit's schedule. No vent/cor
+        echo is produced; only RPM changes confirm the cancel took effect.
+        """
+        await self._publish_payload(CANCEL_TOPIC_SUFFIX, CANCEL_PAYLOAD)
+
+    async def _publish_payload(self, topic_suffix: str, payload_dict: dict) -> None:
+        if self._client is None:
+            raise HomeAssistantError("Vent-Axia client not connected")
+        topic = f"{self.topic_prefix}/{topic_suffix}"
+        payload = json.dumps(payload_dict)
+        client = self._client
+
+        def _publish_and_wait() -> None:
+            info = client.publish(topic, payload, qos=0)
+            info.wait_for_publish(timeout=5)
+            if not info.is_published():
+                raise HomeAssistantError(
+                    f"publish to {topic} did not complete within 5s"
+                )
+
+        await self.hass.async_add_executor_job(_publish_and_wait)
 
     # ------------------------------------------------------------------
     # MQTT lifecycle (paho threads → HA event loop)
