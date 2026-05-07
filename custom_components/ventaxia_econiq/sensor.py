@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
@@ -17,6 +18,7 @@ from homeassistant.const import (
     REVOLUTIONS_PER_MINUTE,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfTime,
     UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant, callback
@@ -52,6 +54,35 @@ def _attr_passthrough(v: Any) -> dict[str, Any] | None:
     if isinstance(v, dict):
         return v
     return None
+
+
+def _override_remaining_seconds(payload: Any) -> int | None:
+    """Compute remaining seconds on an active override.
+
+    Phase A confirmed vent/cor publishes ``trem`` as the override START timestamp
+    (ISO local time, e.g. ``"2026-05-07T14:29:18"``) and ``treq`` as the requested
+    duration (``HH:MM:SS``). Idle echoes both as empty/zero.
+
+    Value is recomputed only when vent/cor echoes; for a live countdown the HA
+    UI should compare against the last-changed timestamp.
+    """
+    if not isinstance(payload, dict):
+        return None
+    trem = payload.get("trem")
+    treq = payload.get("treq")
+    if not trem or not treq or treq == "00:00:00":
+        return None
+    try:
+        start = datetime.fromisoformat(trem)
+        parts = treq.split(":")
+        if len(parts) != 3:
+            return None
+        h, m, s = (int(p) for p in parts)
+        total = h * 3600 + m * 60 + s
+        elapsed = (datetime.now() - start).total_seconds()
+        return max(0, int(total - elapsed))
+    except (TypeError, ValueError):
+        return None
 
 
 SENSORS: tuple[EconiqSensorDescription, ...] = (
@@ -259,6 +290,16 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         topic_suffix="vent/caf",
         value_fn=lambda v: v.get("ps") if isinstance(v, dict) else None,
         attr_fn=_attr_passthrough,
+    ),
+    # ---- Override remaining (seconds) ----
+    EconiqSensorDescription(
+        key="override_remaining",
+        translation_key="override_remaining",
+        topic_suffix="vent/cor",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_override_remaining_seconds,
     ),
 )
 
