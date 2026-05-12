@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.2 — 2026-05-12
+
+### Fixed
+
+- **Humidity labels were inverted.** The firmware's `io/irh/val` is the *intake* (outdoor) RH — air being drawn into the unit — not "Indoor humidity" as it was previously labeled. `io/erh/val` is the extract duct, which carries air pulled from the rooms, and is the actual indoor RH. (The neighbouring `eco2` = extract CO₂ sensor was already labeled correctly as indoor CO₂.)
+  - `sensor.<unit>_indoor_humidity` now correctly reports indoor RH.
+  - The intake/outdoor RH is now exposed as `sensor.<unit>_outdoor_humidity` (was misnamed `_extract_humidity`).
+- **Includes a config-entry migration (v1 → v2).** Existing entity unique_ids and entity_id slugs are renamed in place — history is preserved, and any automation referencing `sensor.<unit>_indoor_humidity` keeps working and now reads correct data. **Breaking:** any automation that explicitly referenced `sensor.<unit>_extract_humidity` will need updating — that slug becomes `sensor.<unit>_indoor_humidity` after migration.
+
 ## v0.2.1 — 2026-05-07
 
 ### Added

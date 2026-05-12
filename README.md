@@ -24,8 +24,8 @@ This integration:
 | Supply air temperature     | `io/t2` | °C — temperature |
 | Extract air temperature    | `io/t3` | °C — temperature |
 | Exhaust air temperature    | `io/t4` | °C — temperature |
-| Indoor humidity            | `io/irh/val` | % — humidity |
-| Extract humidity           | `io/erh/val` | % — humidity |
+| Outdoor humidity           | `io/irh/val` | % — humidity (intake air) |
+| Indoor humidity            | `io/erh/val` | % — humidity (extract air) |
 | Indoor CO₂ (if installed)  | `io/eco2/val` | ppm — CO₂ |
 | Supply airflow             | `vent/afs/fm` | m³/h — volume_flow_rate |
 | Extract airflow            | `vent/afe/fm` | m³/h |

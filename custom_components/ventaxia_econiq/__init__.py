@@ -351,6 +351,61 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 # HA entry points
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entries forward.
+
+    v1 → v2 (0.2.2): humidity labels were inverted. The firmware's `io/irh/val`
+    is the *intake* (outdoor) RH, not indoor — `erh` (extract) is the actual
+    indoor RH. Rename unique_ids and entity_id slugs in place so history and
+    automations referencing `sensor.<unit>_indoor_humidity` survive and now
+    point at the right data.
+    """
+    _LOGGER.info("Migrating Vent-Axia Econiq entry %s from v%s", entry.entry_id, entry.version)
+
+    if entry.version > 2:
+        return False
+
+    if entry.version == 1:
+        from homeassistant.helpers import entity_registry as er
+
+        registry = er.async_get(hass)
+        device_id = entry.data[CONF_TOPIC_PREFIX]
+
+        # Order matters: free the `_indoor_rh` unique_id slot first by renaming
+        # the misnamed old `_indoor_rh` (intake) to `_outdoor_rh`, then the old
+        # `_extract_rh` (true indoor) can reuse `_indoor_rh`.
+        renames = [
+            (f"{device_id}_indoor_rh", f"{device_id}_outdoor_rh", "indoor_humidity", "outdoor_humidity"),
+            (f"{device_id}_extract_rh", f"{device_id}_indoor_rh", "extract_humidity", "indoor_humidity"),
+        ]
+
+        for old_uid, new_uid, old_slug, new_slug in renames:
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_uid)
+            if entity_id is None:
+                _LOGGER.debug("no entity with unique_id %s — skipping", old_uid)
+                continue
+            new_entity_id = (
+                entity_id.replace(old_slug, new_slug, 1)
+                if old_slug in entity_id
+                else None
+            )
+            kwargs: dict[str, Any] = {"new_unique_id": new_uid}
+            if new_entity_id and new_entity_id != entity_id:
+                kwargs["new_entity_id"] = new_entity_id
+            registry.async_update_entity(entity_id, **kwargs)
+            _LOGGER.info(
+                "renamed %s (unique_id %s → %s%s)",
+                entity_id,
+                old_uid,
+                new_uid,
+                f", entity_id → {new_entity_id}" if "new_entity_id" in kwargs else "",
+            )
+
+        hass.config_entries.async_update_entry(entry, version=2)
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = VentAxiaEconiqCoordinator(hass, entry)
     await coordinator.async_start()

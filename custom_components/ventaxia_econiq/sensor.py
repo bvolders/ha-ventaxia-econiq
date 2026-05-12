@@ -128,9 +128,11 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         suggested_display_precision=1,
     ),
     # ---- Humidities ----
+    # `irh` is intake RH (outdoor air being drawn in), not indoor — historically
+    # misread. `erh` (extract) is the actual indoor RH, mirroring `eco2` below.
     EconiqSensorDescription(
-        key="indoor_rh",
-        translation_key="indoor_rh",
+        key="outdoor_rh",
+        translation_key="outdoor_rh",
         topic_suffix="io/irh/val",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
@@ -139,8 +141,8 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         suggested_display_precision=1,
     ),
     EconiqSensorDescription(
-        key="extract_rh",
-        translation_key="extract_rh",
+        key="indoor_rh",
+        translation_key="indoor_rh",
         topic_suffix="io/erh/val",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
