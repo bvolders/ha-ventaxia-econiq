@@ -50,6 +50,19 @@ def _coerce_float(v: Any) -> float | None:
         return None
 
 
+def _lps_to_m3h(v: Any) -> float | None:
+    """Convert the unit's raw L/s airflow reading to m³/h.
+
+    The ``vent/afs/fm`` / ``vent/afe/fm`` flow-measurement topics report in
+    litres/second (Vent-Axia commissioning convention), NOT m³/h as originally
+    assumed. Evidence: on this 600 m³/h unit the raw value never exceeded ~80
+    over 10 days (= 288 m³/h ≈ 48% of rating at ~50% fan RPM); 80 m³/h would be
+    only 13% of rating and is implausible. Multiply by 3.6 to present m³/h.
+    """
+    f = _coerce_float(v)
+    return round(f * 3.6, 1) if f is not None else None
+
+
 def _attr_passthrough(v: Any) -> dict[str, Any] | None:
     if isinstance(v, dict):
         return v
@@ -168,7 +181,7 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_coerce_float,
+        value_fn=_lps_to_m3h,
         suggested_display_precision=1,
     ),
     EconiqSensorDescription(
@@ -178,7 +191,7 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_coerce_float,
+        value_fn=_lps_to_m3h,
         suggested_display_precision=1,
     ),
     # ---- Fan RPM ----

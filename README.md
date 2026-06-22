@@ -27,8 +27,8 @@ This integration:
 | Outdoor humidity           | `io/irh/val` | % — humidity (intake air) |
 | Indoor humidity            | `io/erh/val` | % — humidity (extract air) |
 | Indoor CO₂ (if installed)  | `io/eco2/val` | ppm — CO₂ |
-| Supply airflow             | `vent/afs/fm` | m³/h — volume_flow_rate |
-| Extract airflow            | `vent/afe/fm` | m³/h |
+| Supply airflow             | `vent/afs/fm` | m³/h — volume_flow_rate (raw topic is **L/s**, ×3.6 in the integration) |
+| Extract airflow            | `vent/afe/fm` | m³/h (raw topic is **L/s**, ×3.6) |
 | Supply / extract fan RPM   | `vent/{afs,afe}/rpm` | rpm |
 | Supply / extract fan PWM   | `vent/{afs,afe}/pwm` | % |
 | Supply / extract fan power | `vent/{afs,afe}/pwr` | W — power |

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.3 — 2026-06-22
+
+### Fixed
+
+- **Airflow was reported in the wrong unit.** The `vent/afs/fm` and `vent/afe/fm` flow-measurement topics report in **litres/second** (Vent-Axia commissioning convention), but were labeled and stored as m³/h directly. On a 600 m³/h unit this made airflow read implausibly low (~36 "m³/h" at 27% fan PWM). Evidence: over 10 days the raw value never exceeded ~80 — that is 13% of rating as m³/h (impossible) but 288 m³/h ≈ 48% as L/s, matching the ~50% max fan RPM observed. The integration now multiplies the raw L/s value by 3.6 and continues to present m³/h.
+  - `sensor.<unit>_supply_airflow` / `_extract_airflow` now read ~3.6× higher (true m³/h).
+  - History before this release is in the old (×3.6-too-low) scale; the graph will show a one-time step.
+
 ## v0.2.2 — 2026-05-12
 
 ### Fixed
