@@ -55,16 +55,45 @@
           "low": "Low",
           "normal": "Normal"
         }
+      },
+      "bypass_mode": {
+        "name": "Bypass mode",
+        "state": {
+          "off": "Off",
+          "normal": "Normal",
+          "evening_fresh": "Evening fresh",
+          "night_fresh": "Night fresh",
+          "normal_modulation": "Normal (modulation)",
+          "evening_fresh_modulation": "Evening fresh (modulation)",
+          "night_fresh_modulation": "Night fresh (modulation)"
+        }
+      },
+      "bypass_fan": {
+        "name": "Bypass fan speed",
+        "state": {
+          "off": "Off",
+          "low": "Low",
+          "normal": "Normal",
+          "boost": "Boost",
+          "purge": "Purge",
+          "max": "Max"
+        }
       }
     },
     "number": {
-      "override_duration": { "name": "Override duration" }
+      "override_duration": { "name": "Override duration" },
+      "bypass_ect": { "name": "Bypass outdoor threshold" },
+      "bypass_ict": { "name": "Bypass indoor target" }
     },
     "button": {
       "bbq_bypass": { "name": "BBQ bypass (2h off)" }
     },
+    "switch": {
+      "bypass_freecool": { "name": "Bypass free-cooling" }
+    },
     "binary_sensor": {
-      "override_active": { "name": "Override active" }
+      "override_active": { "name": "Override active" },
+      "bypass_open": { "name": "Bypass open" }
     },
     "climate": {
       "mvhr": { "name": "MVHR" }
@@ -93,6 +122,32 @@
       "name": "Cancel user override",
       "description": "Cancel the active override and resume the unit's schedule.",
       "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Required only if multiple Vent-Axia Econiq units are configured."
+        }
+      }
+    },
+    "set_bypass": {
+      "name": "Set summer bypass",
+      "description": "Configure the summer-bypass damper. Any omitted field keeps its current value.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Summer-bypass mode (off / normal / evening / night, with modulation variants)."
+        },
+        "fan_mode": {
+          "name": "Fan speed",
+          "description": "Airflow preset to run while the bypass is active."
+        },
+        "ect": {
+          "name": "Outdoor threshold (°C)",
+          "description": "ExternalComfortTemperature. The Connect app caps this at 20 °C; HA allows higher for free-cooling."
+        },
+        "ict": {
+          "name": "Indoor target (°C)",
+          "description": "RoomComfortTemperature — the indoor comfort target."
+        },
         "device_id": {
           "name": "Device",
           "description": "Required only if multiple Vent-Axia Econiq units are configured."

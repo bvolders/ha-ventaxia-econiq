@@ -24,6 +24,14 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    BYPASS_ECT_DEFAULT,
+    BYPASS_FAN_DEFAULT,
+    BYPASS_FAN_MODES,
+    BYPASS_ICT_DEFAULT,
+    BYPASS_MODE_TO_INT,
+    BYPASS_SELECT_MODES,
+    BYPASS_TEMP_MAX,
+    BYPASS_TEMP_MIN,
     CANCEL_PAYLOAD,
     CANCEL_TOPIC_SUFFIX,
     CONF_HOST,
@@ -36,6 +44,8 @@ from .const import (
     RECONNECT_BACKOFF_INITIAL_SECONDS,
     RECONNECT_BACKOFF_MAX_SECONDS,
     SELECT_MODES,
+    TOPIC_BYPASS_CONFIG,
+    TOPIC_BYPASS_CONFIG_WRITE,
     TOPIC_USER_OVERRIDE,
 )
 from .helpers import format_treq
@@ -48,6 +58,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.BUTTON,
     Platform.BINARY_SENSOR,
+    Platform.SWITCH,
     Platform.CLIMATE,
 ]
 
@@ -91,6 +102,20 @@ class VentAxiaEconiqCoordinator:
         self._available = False
         self._reconnect_task: asyncio.Task | None = None
         self._stopping = False
+
+        # Shared state read by the override-duration number / fan-mode select.
+        self.override_duration_minutes: int = 60
+
+        # Cached summer-bypass config {mod, gtm, ect, ict}. Seeded with sane
+        # defaults, kept in sync with the unit via the vent/sbc echo, and
+        # updated optimistically on each successful write. The bypass control
+        # entities each edit one field and republish the merged whole.
+        self.bypass_config: dict[str, Any] = {
+            "mod": BYPASS_MODE_TO_INT["off"],
+            "gtm": MODE_TO_GTM[BYPASS_FAN_DEFAULT],
+            "ect": BYPASS_ECT_DEFAULT,
+            "ict": BYPASS_ICT_DEFAULT,
+        }
 
     # ------------------------------------------------------------------
     # Public API for entities
@@ -158,6 +183,35 @@ class VentAxiaEconiqCoordinator:
         echo is produced; only RPM changes confirm the cancel took effect.
         """
         await self._publish_payload(CANCEL_TOPIC_SUFFIX, CANCEL_PAYLOAD)
+
+    async def publish_bypass_config(
+        self, mod: int, gtm: int, ect: float, ict: float
+    ) -> None:
+        """Publish a summer-bypass configuration to the unit.
+
+        Topic: ``<prefix>/vent/sbc/wr``
+        Payload: ``{"mod": <int>, "gtm": <int>, "ect": <°C>, "ict": <°C>}``
+
+        On success the local ``bypass_config`` cache is updated optimistically
+        so the control entities reflect the new value immediately (the unit
+        also echoes ``vent/sbc``, which re-syncs the cache). Raises
+        HomeAssistantError on disconnect or publish timeout — the cache is NOT
+        updated in that case.
+        """
+        payload = {"mod": int(mod), "gtm": int(gtm), "ect": ect, "ict": ict}
+        await self._publish_payload(TOPIC_BYPASS_CONFIG_WRITE, payload)
+        self.bypass_config = dict(payload)
+
+    @callback
+    def _on_bypass_echo(self, payload: Any) -> None:
+        """Keep ``bypass_config`` synced with the unit's vent/sbc echo."""
+        if not isinstance(payload, dict):
+            return
+        merged = dict(self.bypass_config)
+        for key in ("mod", "gtm", "ect", "ict"):
+            if key in payload:
+                merged[key] = payload[key]
+        self.bypass_config = merged
 
     async def _publish_payload(self, topic_suffix: str, payload_dict: dict) -> None:
         if self._client is None:
@@ -277,6 +331,7 @@ class VentAxiaEconiqCoordinator:
 
 SERVICE_SET_USER_OVERRIDE = "set_user_override"
 SERVICE_CANCEL_USER_OVERRIDE = "cancel_user_override"
+SERVICE_SET_BYPASS = "set_bypass"
 _SERVICES_REGISTERED = "ventaxia_econiq_services_registered"
 
 SET_USER_OVERRIDE_SCHEMA = vol.Schema(
@@ -289,6 +344,20 @@ SET_USER_OVERRIDE_SCHEMA = vol.Schema(
 
 CANCEL_USER_OVERRIDE_SCHEMA = vol.Schema(
     {
+        vol.Optional("device_id"): cv.string,
+    }
+)
+
+SET_BYPASS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("mode"): vol.In(list(BYPASS_SELECT_MODES)),
+        vol.Optional("fan_mode"): vol.In(list(BYPASS_FAN_MODES)),
+        vol.Optional("ect"): vol.All(
+            vol.Coerce(float), vol.Range(min=BYPASS_TEMP_MIN, max=BYPASS_TEMP_MAX)
+        ),
+        vol.Optional("ict"): vol.All(
+            vol.Coerce(float), vol.Range(min=BYPASS_TEMP_MIN, max=BYPASS_TEMP_MAX)
+        ),
         vol.Optional("device_id"): cv.string,
     }
 )
@@ -336,6 +405,21 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = _coordinator_for_call(hass, call)
         await coordinator.publish_cancel_override()
 
+    async def _set_bypass(call) -> None:
+        coordinator = _coordinator_for_call(hass, call)
+        cfg = dict(coordinator.bypass_config)
+        if "mode" in call.data:
+            cfg["mod"] = BYPASS_MODE_TO_INT[call.data["mode"]]
+        if "fan_mode" in call.data:
+            cfg["gtm"] = MODE_TO_GTM[call.data["fan_mode"]]
+        if "ect" in call.data:
+            cfg["ect"] = call.data["ect"]
+        if "ict" in call.data:
+            cfg["ict"] = call.data["ict"]
+        await coordinator.publish_bypass_config(
+            mod=cfg["mod"], gtm=cfg["gtm"], ect=cfg["ect"], ict=cfg["ict"]
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SET_USER_OVERRIDE, _set_user_override,
         schema=SET_USER_OVERRIDE_SCHEMA,
@@ -343,6 +427,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_CANCEL_USER_OVERRIDE, _cancel_user_override,
         schema=CANCEL_USER_OVERRIDE_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_BYPASS, _set_bypass,
+        schema=SET_BYPASS_SCHEMA,
     )
     hass.data[_SERVICES_REGISTERED] = True
 
@@ -409,6 +497,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = VentAxiaEconiqCoordinator(hass, entry)
     await coordinator.async_start()
+    # Keep the bypass-config cache synced with the unit's vent/sbc echo.
+    coordinator.subscribe_topic(TOPIC_BYPASS_CONFIG, coordinator._on_bypass_echo)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

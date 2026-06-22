@@ -38,3 +38,62 @@ cancel_user_override:
       selector:
         device:
           integration: ventaxia_econiq
+
+set_bypass:
+  name: Set summer bypass
+  description: Configure the summer-bypass damper (vent/sbc/wr). Any omitted field keeps its current value.
+  fields:
+    mode:
+      name: Mode
+      description: Summer-bypass mode.
+      required: false
+      selector:
+        select:
+          options:
+            - "off"
+            - normal
+            - evening_fresh
+            - night_fresh
+            - normal_modulation
+            - evening_fresh_modulation
+            - night_fresh_modulation
+    fan_mode:
+      name: Fan speed
+      description: Airflow preset to run while the bypass is active.
+      required: false
+      selector:
+        select:
+          options:
+            - "off"
+            - low
+            - normal
+            - boost
+            - purge
+            - max
+    ect:
+      name: Outdoor threshold (°C)
+      description: ExternalComfortTemperature. The Connect app caps this at 20 °C; HA allows higher for free-cooling.
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+    ict:
+      name: Indoor target (°C)
+      description: RoomComfortTemperature — the indoor comfort target.
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+    device_id:
+      name: Device
+      description: Required only if multiple Vent-Axia Econiq units are configured.
+      required: false
+      selector:
+        device:
+          integration: ventaxia_econiq

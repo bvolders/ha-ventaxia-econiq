@@ -117,3 +117,52 @@ async def test_set_user_override_off_maps_to_gtm_0(
     )
 
     coordinator.publish_user_override.assert_awaited_once_with(gtm=0, treq="02:00:00")
+
+
+async def test_set_bypass_merges_partial_into_current_config(
+    hass, mock_entry_with_coordinator
+) -> None:
+    """Omitted fields keep their current value from the cache."""
+    _entry, coordinator = mock_entry_with_coordinator
+    coordinator.bypass_config = {"mod": 0, "gtm": 2, "ect": 20.0, "ict": 22.0}
+    coordinator.publish_bypass_config = AsyncMock()
+    await _async_register_services(hass)
+
+    # Only set the outdoor threshold; everything else preserved.
+    await hass.services.async_call(
+        DOMAIN, "set_bypass", {"ect": 26.0}, blocking=True
+    )
+
+    coordinator.publish_bypass_config.assert_awaited_once_with(
+        mod=0, gtm=2, ect=26.0, ict=22.0
+    )
+
+
+async def test_set_bypass_translates_mode_and_fan(
+    hass, mock_entry_with_coordinator
+) -> None:
+    _entry, coordinator = mock_entry_with_coordinator
+    coordinator.bypass_config = {"mod": 0, "gtm": 2, "ect": 20.0, "ict": 22.0}
+    coordinator.publish_bypass_config = AsyncMock()
+    await _async_register_services(hass)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "set_bypass",
+        {"mode": "night_fresh", "fan_mode": "low"},
+        blocking=True,
+    )
+
+    coordinator.publish_bypass_config.assert_awaited_once_with(
+        mod=3, gtm=1, ect=20.0, ict=22.0
+    )
+
+
+async def test_set_bypass_rejects_out_of_range_temp(
+    hass, mock_entry_with_coordinator
+) -> None:
+    await _async_register_services(hass)
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "set_bypass", {"ect": 99.0}, blocking=True
+        )
