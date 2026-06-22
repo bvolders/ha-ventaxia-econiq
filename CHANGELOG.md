@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 — 2026-06-23 (unreleased — live trial)
+
+### Added
+
+- **Summer-bypass control + status**, reverse-engineered from the Connect app v7.2.2 (see `PROTOCOL.md`, `tools/bypass_decompile.results.md`). The bypass uses its own topic family `vent/sbc` (config), `vent/sbc/wr` (write), `vent/sbs` (status) — not the previously-guessed `vent/caf|cm/wr`.
+  - `switch.<unit>_bypass_freecool` — one-tap enable/disable (mod Normal↔Off).
+  - `select.<unit>_bypass_mode` / `_bypass_fan` — raw mode + fan-speed control.
+  - `number.<unit>_bypass_ect` / `_bypass_ict` — comfort thresholds, 5–30 °C (deliberately above the Connect app's 20 °C cap on the outdoor threshold, enabling HA-driven free-cooling the app forbids).
+  - `binary_sensor.<unit>_bypass_open` — real damper state from `vent/sbs.pos`, with position / status-mode / open-level attributes. Replaces template heuristics.
+  - `ventaxia_econiq.set_bypass` service (partial-merge of mode/fan_mode/ect/ict).
+- **`PROTOCOL.md`** — full MQTT protocol reference (~50 topics, ~25 enums).
+
 ## v0.2.3 — 2026-06-22
 
 ### Fixed
