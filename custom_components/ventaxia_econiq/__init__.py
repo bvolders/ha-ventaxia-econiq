@@ -472,6 +472,18 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if entity_id is None:
                 _LOGGER.debug("no entity with unique_id %s — skipping", old_uid)
                 continue
+            # Idempotency guard: if the target unique_id already exists, this
+            # rename was effectively already applied (or the registry was
+            # recreated in the v2 shape). Re-applying it raises ValueError and
+            # would abort setup, leaving the entry stuck at v1 forever. Skip.
+            if registry.async_get_entity_id("sensor", DOMAIN, new_uid) is not None:
+                _LOGGER.warning(
+                    "v2 migration: target unique_id %s already in use — %s "
+                    "appears already migrated; skipping rename",
+                    new_uid,
+                    old_uid,
+                )
+                continue
             new_entity_id = (
                 entity_id.replace(old_slug, new_slug, 1)
                 if old_slug in entity_id
