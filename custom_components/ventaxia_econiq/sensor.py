@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
+    EntityCategory,
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
     UnitOfPower,
@@ -26,7 +27,17 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import VentAxiaEconiqCoordinator
-from .const import DOMAIN
+from .const import (
+    AIR_QUALITY_FROM_INT,
+    ANTIFROST_STATUS_FROM_INT,
+    DOMAIN,
+    TOPIC_AIR_QUALITY,
+    TOPIC_ANTIFROST_STATUS,
+    TOPIC_FILTER_LAST,
+    TOPIC_FILTER_REMAINING,
+    TOPIC_NOTIFICATIONS,
+    TOPIC_RUNTIME,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -67,6 +78,43 @@ def _attr_passthrough(v: Any) -> dict[str, Any] | None:
     if isinstance(v, dict):
         return v
     return None
+
+
+def _enum_from(mapping: dict[int, str]) -> Callable[[Any], str | None]:
+    """Build a value_fn mapping a bare-int enum payload to its label."""
+
+    def fn(v: Any) -> str | None:
+        try:
+            return mapping.get(int(v))
+        except (TypeError, ValueError):
+            return None
+
+    return fn
+
+
+def _antifrost_status(v: Any) -> str | None:
+    if not isinstance(v, dict):
+        return None
+    try:
+        return ANTIFROST_STATUS_FROM_INT.get(int(v.get("sta")))
+    except (TypeError, ValueError):
+        return None
+
+
+def _filter_last(v: Any) -> str | None:
+    """vent/filtertmr/last is an ISO datetime, or "0" when never set."""
+    if v in (None, "", "0"):
+        return None
+    return str(v)
+
+
+def _int_or_none(v: Any) -> int | None:
+    if v in (None, ""):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _override_remaining_seconds(payload: Any) -> int | None:
@@ -315,6 +363,62 @@ SENSORS: tuple[EconiqSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.SECONDS,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_override_remaining_seconds,
+    ),
+    # ---- Air quality (vent/saq, bare enum) ----
+    EconiqSensorDescription(
+        key="air_quality",
+        translation_key="air_quality",
+        topic_suffix=TOPIC_AIR_QUALITY,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(AIR_QUALITY_FROM_INT.values()),
+        value_fn=_enum_from(AIR_QUALITY_FROM_INT),
+    ),
+    # ---- Antifrost status (vent/afstat.sta; usa/pwr as attrs) ----
+    EconiqSensorDescription(
+        key="antifrost_status",
+        translation_key="antifrost_status",
+        topic_suffix=TOPIC_ANTIFROST_STATUS,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(ANTIFROST_STATUS_FROM_INT.values()),
+        value_fn=_antifrost_status,
+        attr_fn=_attr_passthrough,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # ---- Filters ----
+    EconiqSensorDescription(
+        key="filter_remaining",
+        translation_key="filter_remaining",
+        topic_suffix=TOPIC_FILTER_REMAINING,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_coerce_float,
+        suggested_display_precision=0,
+    ),
+    EconiqSensorDescription(
+        key="filter_last_changed",
+        translation_key="filter_last_changed",
+        topic_suffix=TOPIC_FILTER_LAST,
+        value_fn=_filter_last,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # ---- Diagnostics ----
+    EconiqSensorDescription(
+        key="runtime",
+        translation_key="runtime",
+        topic_suffix=TOPIC_RUNTIME,
+        # Unit (hours vs seconds) unconfirmed in the decompile — report raw,
+        # monotonic. Add a device_class/unit once verified on the unit.
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_int_or_none,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EconiqSensorDescription(
+        key="notifications",
+        translation_key="notifications",
+        topic_suffix=TOPIC_NOTIFICATIONS,
+        value_fn=_int_or_none,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 

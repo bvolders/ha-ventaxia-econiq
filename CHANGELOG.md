@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.4.0 — 2026-06-25 (unreleased — protocol-faithful airflow model)
+
+Rebuilds airflow control around `PROTOCOL.md`. The unit has a *tiered* airflow
+system — `vent/daf` is the **persistent** default preset, `vent/uo` is an
+**ephemeral timed** override, and `vent/caf` reports the **true** active preset.
+v0.3 only ever wrote the timed override and showed "last thing HA wrote".
+
+### Changed (BREAKING)
+
+- **Airflow is now a `fan` entity** (`fan.<unit>`), replacing the old
+  `select.<unit>_fan_mode` and `climate.<unit>_mvhr`. Setting a preset
+  (low/normal/boost/purge/max) writes the **persistent** default airflow
+  (`vent/daf/wr`) and clears any active override, instead of a timed `vent/uo`
+  override. State now reflects the **true** current preset from `vent/caf`, so
+  keypad/schedule changes show up.
+  - **Migration v2 → v3** removes the obsolete `select.<unit>_fan_mode`,
+    `climate.<unit>_mvhr`, and `number.<unit>_override_duration` registry
+    entries. **Update any dashboards/automations that referenced them** —
+    airflow moves to `fan.<unit>`; explicit timed boosts use the
+    `set_user_override` service (which now carries its own `duration`).
+- Bypass entities relabelled **"Summer-bypass …"** (mode / fan speed / outdoor
+  threshold / indoor target / free-cooling / open) so they can't be mistaken for
+  the main fan control. Entity IDs unchanged.
+
+### Added
+
+- **`select.<unit>_control_mode`** — control mode (Fixed / Constant-Volume /
+  Constant-Pressure), `vent/cm`.
+- **`sensor.<unit>_air_quality`** — system air quality, `vent/saq`.
+- **`sensor.<unit>_filter_life_remaining`** + **`_filter_last_changed`** and a
+  **`button.<unit>_filter_reset`** (publishes `Cleaned` to `vent/filtertmr/reset`).
+- **`sensor.<unit>_antifrost_status`** (`vent/afstat`), **`_runtime`**
+  (`mdet/runt`), **`_notifications`** (`mdet/noti`).
+- Device info (firmware / model / serial) populated from `mdet/moddet`.
+
+### Notes
+
+- Timed boosts remain available via the `set_user_override` service / BBQ button.
+- **Validate on the unit:** that `vent/daf/wr` produces an immediate, *lasting*
+  speed change (an active internal schedule may still take priority — see
+  `PROTOCOL.md`); the new bare-payload writes (`vent/daf`, `vent/cm`, the
+  `Cleaned` reset) are decompiled-but-unverified on the wire.
+
 ## v0.3.0 — 2026-06-23 (unreleased — live trial)
 
 ### Added

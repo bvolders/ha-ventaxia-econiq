@@ -41,23 +41,46 @@
       "total_power": { "name": "Total power" },
       "faults": { "name": "Faults" },
       "warnings": { "name": "Warnings" },
+      "notifications": { "name": "Notifications" },
       "wifi_rssi": { "name": "WiFi signal" },
       "override": { "name": "Operating override" },
       "current_airflow_program": { "name": "Current airflow program" },
       "heat_recovery_efficiency": { "name": "Heat recovery efficiency" },
-      "override_remaining": { "name": "Override remaining" }
+      "override_remaining": { "name": "Override remaining" },
+      "runtime": { "name": "Runtime" },
+      "air_quality": {
+        "name": "Air quality",
+        "state": {
+          "disabled": "Disabled",
+          "good": "Good",
+          "neutral": "Neutral",
+          "bad": "Bad"
+        }
+      },
+      "antifrost_status": {
+        "name": "Antifrost status",
+        "state": {
+          "inactive": "Inactive",
+          "airflow_imbalance": "Airflow imbalance",
+          "bypass": "Bypass",
+          "preheater_balanced": "Preheater (balanced)",
+          "preheater_imbalanced": "Preheater (imbalanced)"
+        }
+      },
+      "filter_remaining": { "name": "Filter life remaining" },
+      "filter_last_changed": { "name": "Filter last changed" }
     },
     "select": {
-      "fan_mode": {
-        "name": "Fan mode",
+      "control_mode": {
+        "name": "Control mode",
         "state": {
-          "off": "Off",
-          "low": "Low",
-          "normal": "Normal"
+          "fixed": "Fixed",
+          "cv": "Constant volume",
+          "cp": "Constant pressure"
         }
       },
       "bypass_mode": {
-        "name": "Bypass mode",
+        "name": "Summer-bypass mode",
         "state": {
           "off": "Off",
           "normal": "Normal",
@@ -69,7 +92,7 @@
         }
       },
       "bypass_fan": {
-        "name": "Bypass fan speed",
+        "name": "Summer-bypass fan speed",
         "state": {
           "off": "Off",
           "low": "Low",
@@ -81,28 +104,25 @@
       }
     },
     "number": {
-      "override_duration": { "name": "Override duration" },
-      "bypass_ect": { "name": "Bypass outdoor threshold" },
-      "bypass_ict": { "name": "Bypass indoor target" }
+      "bypass_ect": { "name": "Summer-bypass outdoor threshold" },
+      "bypass_ict": { "name": "Summer-bypass indoor target" }
     },
     "button": {
-      "bbq_bypass": { "name": "BBQ bypass (2h off)" }
+      "bbq_bypass": { "name": "BBQ bypass (2h off)" },
+      "filter_reset": { "name": "Reset filter timer" }
     },
     "switch": {
-      "bypass_freecool": { "name": "Bypass free-cooling" }
+      "bypass_freecool": { "name": "Summer-bypass free-cooling" }
     },
     "binary_sensor": {
       "override_active": { "name": "Override active" },
-      "bypass_open": { "name": "Bypass open" }
-    },
-    "climate": {
-      "mvhr": { "name": "MVHR" }
+      "bypass_open": { "name": "Summer-bypass open" }
     }
   },
   "services": {
     "set_user_override": {
       "name": "Set user override",
-      "description": "Override the unit's airflow mode for a fixed duration.",
+      "description": "Apply a TIMED airflow override (boost/off/etc) that auto-resumes. For a persistent fan speed use the fan entity instead.",
       "fields": {
         "mode": {
           "name": "Mode",
@@ -120,7 +140,7 @@
     },
     "cancel_user_override": {
       "name": "Cancel user override",
-      "description": "Cancel the active override and resume the unit's schedule.",
+      "description": "Cancel the active override and resume the unit's schedule / default airflow.",
       "fields": {
         "device_id": {
           "name": "Device",

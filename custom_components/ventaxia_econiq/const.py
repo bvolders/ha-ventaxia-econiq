@@ -142,3 +142,74 @@ BYPASS_TEMP_STEP: Final[float] = 0.5
 BYPASS_ECT_DEFAULT: Final[float] = 20.0
 BYPASS_ICT_DEFAULT: Final[float] = 22.0
 BYPASS_FAN_DEFAULT: Final[str] = "normal"
+
+
+# ----------------------------------------------------------------------
+# v0.4 protocol-faithful airflow model
+#
+# Source of truth: PROTOCOL.md (Connect app v7.2.2 decompile). The airflow
+# control is a *tier* system: vent/daf is the PERSISTENT default/idle preset,
+# vent/uo is an ephemeral TIMED override, and vent/caf reports the TRUE active
+# preset right now. The fan entity sets vent/daf and reads vent/caf.
+
+# AirflowPreset reverse map (int -> name), for reading vent/caf.ps + vent/daf.
+AIRFLOW_PRESET_FROM_INT: Final[dict[int, str]] = {
+    0: "off",
+    1: "low",
+    2: "normal",
+    3: "boost",
+    4: "purge",
+    254: "none",
+    255: "max",
+}
+
+# Fan-entity preset modes — every AirflowPreset except off (= fan turn_off) and
+# the none/254 cancel sentinel. Order = increasing airflow.
+FAN_PRESET_MODES: Final[tuple[str, ...]] = ("low", "normal", "boost", "purge", "max")
+
+# Persistent default/idle airflow preset. Bare-enum payload (AirflowPreset int).
+TOPIC_DEFAULT_AIRFLOW: Final = "vent/daf"
+TOPIC_DEFAULT_AIRFLOW_WRITE: Final = "vent/daf/wr"
+
+# Current (true) active airflow preset echo: {"ps": AirflowPreset, "prop": num}.
+TOPIC_CURRENT_AIRFLOW: Final = "vent/caf"
+
+# Control mode (Fixed / Constant-Volume / Constant-Pressure). Bare-enum.
+TOPIC_CONTROL_MODE: Final = "vent/cm"
+TOPIC_CONTROL_MODE_WRITE: Final = "vent/cm/wr"
+CONTROL_MODE_TO_INT: Final[dict[str, int]] = {"fixed": 0, "cv": 1, "cp": 2}
+CONTROL_MODE_FROM_INT: Final[dict[int, str]] = {
+    v: k for k, v in CONTROL_MODE_TO_INT.items()
+}
+CONTROL_MODE_OPTIONS: Final[tuple[str, ...]] = tuple(CONTROL_MODE_TO_INT)
+
+# System air quality. Bare-enum.
+TOPIC_AIR_QUALITY: Final = "vent/saq"
+AIR_QUALITY_FROM_INT: Final[dict[int, str]] = {
+    0: "disabled",
+    1: "good",
+    2: "neutral",
+    3: "bad",
+}
+
+# Antifrost status: {"sta": AntifrostStatusMode, "usa": num, "pwr": W}.
+TOPIC_ANTIFROST_STATUS: Final = "vent/afstat"
+ANTIFROST_STATUS_FROM_INT: Final[dict[int, str]] = {
+    0: "inactive",
+    1: "airflow_imbalance",
+    2: "bypass",
+    3: "preheater_balanced",
+    4: "preheater_imbalanced",
+}
+
+# Filters: remaining life (days), last-change timestamp ("0" -> null), and the
+# reset command (publish the bare literal string "Cleaned" to the bare topic).
+TOPIC_FILTER_REMAINING: Final = "vent/filtertmr/remain"
+TOPIC_FILTER_LAST: Final = "vent/filtertmr/last"
+TOPIC_FILTER_RESET: Final = "vent/filtertmr/reset"
+FILTER_RESET_PAYLOAD: Final[str] = "Cleaned"
+
+# Model/diagnostics. moddet: {"sn","mc","mn","dom","fwv"} -> DeviceInfo.
+TOPIC_MODEL_DETAILS: Final = "mdet/moddet"
+TOPIC_RUNTIME: Final = "mdet/runt"
+TOPIC_NOTIFICATIONS: Final = "mdet/noti"

@@ -82,3 +82,48 @@ async def test_publish_cancel_uses_canonical_payload(hass) -> None:
     args, _kw = fake_client.publish.call_args
     assert args[0] == "BZPKB-TEST/vent/uo"
     assert json.loads(args[1]) == {"gtm": 254, "treq": "00:00:00"}
+
+
+def _connected(coordinator):
+    fake_client = MagicMock()
+    fake_info = MagicMock()
+    fake_info.is_published.return_value = True
+    fake_client.publish.return_value = fake_info
+    coordinator._client = fake_client
+    return fake_client
+
+
+async def test_publish_default_airflow_writes_daf_bare(hass) -> None:
+    coordinator = _make_coordinator(hass)
+    fake_client = _connected(coordinator)
+    await coordinator.publish_default_airflow(2)
+    args, _kw = fake_client.publish.call_args
+    assert args[0] == "BZPKB-TEST/vent/daf/wr"
+    assert args[1] == "2"  # bare value (not a JSON dict)
+
+
+async def test_publish_control_mode_writes_cm_bare(hass) -> None:
+    coordinator = _make_coordinator(hass)
+    fake_client = _connected(coordinator)
+    await coordinator.publish_control_mode(1)
+    args, _kw = fake_client.publish.call_args
+    assert args[0] == "BZPKB-TEST/vent/cm/wr"
+    assert args[1] == "1"
+
+
+async def test_publish_filter_reset_is_unquoted_literal(hass) -> None:
+    """Reset must be the bare literal `Cleaned`, NOT JSON-quoted '"Cleaned"'."""
+    coordinator = _make_coordinator(hass)
+    fake_client = _connected(coordinator)
+    await coordinator.publish_filter_reset()
+    args, _kw = fake_client.publish.call_args
+    assert args[0] == "BZPKB-TEST/vent/filtertmr/reset"
+    assert args[1] == "Cleaned"
+    assert args[1] != json.dumps("Cleaned")  # proves _publish_raw doesn't JSON-encode
+
+
+async def test_publish_raw_raises_when_not_connected(hass) -> None:
+    coordinator = _make_coordinator(hass)
+    coordinator._client = None
+    with pytest.raises(HomeAssistantError, match="not connected"):
+        await coordinator.publish_default_airflow(2)

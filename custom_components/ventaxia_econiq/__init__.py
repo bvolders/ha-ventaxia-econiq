@@ -22,6 +22,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import (
     BYPASS_ECT_DEFAULT,
@@ -40,12 +41,17 @@ from .const import (
     CONF_PSK_KEY,
     CONF_TOPIC_PREFIX,
     DOMAIN,
+    FILTER_RESET_PAYLOAD,
     MODE_TO_GTM,
     RECONNECT_BACKOFF_INITIAL_SECONDS,
     RECONNECT_BACKOFF_MAX_SECONDS,
     SELECT_MODES,
     TOPIC_BYPASS_CONFIG,
     TOPIC_BYPASS_CONFIG_WRITE,
+    TOPIC_CONTROL_MODE_WRITE,
+    TOPIC_DEFAULT_AIRFLOW_WRITE,
+    TOPIC_FILTER_RESET,
+    TOPIC_MODEL_DETAILS,
     TOPIC_USER_OVERRIDE,
 )
 from .helpers import format_treq
@@ -59,7 +65,7 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
     Platform.BINARY_SENSOR,
     Platform.SWITCH,
-    Platform.CLIMATE,
+    Platform.FAN,
 ]
 
 
@@ -103,9 +109,6 @@ class VentAxiaEconiqCoordinator:
         self._reconnect_task: asyncio.Task | None = None
         self._stopping = False
 
-        # Shared state read by the override-duration number / fan-mode select.
-        self.override_duration_minutes: int = 60
-
         # Cached summer-bypass config {mod, gtm, ect, ict}. Seeded with sane
         # defaults, kept in sync with the unit via the vent/sbc echo, and
         # updated optimistically on each successful write. The bypass control
@@ -117,6 +120,9 @@ class VentAxiaEconiqCoordinator:
             "ict": BYPASS_ICT_DEFAULT,
         }
 
+        # Cached mdet/moddet ({sn, mc, mn, dom, fwv}) for DeviceInfo enrichment.
+        self._model_details: dict[str, Any] = {}
+
     # ------------------------------------------------------------------
     # Public API for entities
 
@@ -127,6 +133,33 @@ class VentAxiaEconiqCoordinator:
     @property
     def device_id(self) -> str:
         return self.topic_prefix
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Shared DeviceInfo, enriched from mdet/moddet when available.
+
+        HA merges DeviceInfo across a device's entities, so it's enough for the
+        entities that use this property to carry fw/model/serial; older entities
+        with a plainer DeviceInfo merge into the same device by identifiers.
+        """
+        md = self._model_details
+        info = DeviceInfo(
+            identifiers={(DOMAIN, self.device_id)},
+            name=f"Vent-Axia Econiq {self.device_id}",
+            manufacturer="Vent-Axia",
+            model=str(md.get("mn") or "Econiq 600"),
+        )
+        if md.get("fwv") is not None:
+            info["sw_version"] = str(md["fwv"])
+        if md.get("sn"):
+            info["serial_number"] = str(md["sn"])
+        return info
+
+    @callback
+    def _on_moddet(self, payload: Any) -> None:
+        """Cache mdet/moddet so device_info can expose fw/model/serial."""
+        if isinstance(payload, dict):
+            self._model_details = payload
 
     def latest(self, topic_suffix: str) -> Any:
         return self._latest.get(topic_suffix)
@@ -202,6 +235,22 @@ class VentAxiaEconiqCoordinator:
         await self._publish_payload(TOPIC_BYPASS_CONFIG_WRITE, payload)
         self.bypass_config = dict(payload)
 
+    async def publish_default_airflow(self, preset: int) -> None:
+        """Set the PERSISTENT default/idle airflow preset (``vent/daf/wr``).
+
+        Bare-enum payload (AirflowPreset int). Unlike publish_user_override this
+        is not timed — it's the unit's baseline when no override/schedule wins.
+        """
+        await self._publish_raw(TOPIC_DEFAULT_AIRFLOW_WRITE, str(int(preset)))
+
+    async def publish_control_mode(self, mode: int) -> None:
+        """Set the control mode (Fixed/CV/CP) via ``vent/cm/wr`` (bare enum)."""
+        await self._publish_raw(TOPIC_CONTROL_MODE_WRITE, str(int(mode)))
+
+    async def publish_filter_reset(self) -> None:
+        """Reset the filter timer — publish the bare literal ``Cleaned``."""
+        await self._publish_raw(TOPIC_FILTER_RESET, FILTER_RESET_PAYLOAD)
+
     @callback
     def _on_bypass_echo(self, payload: Any) -> None:
         """Keep ``bypass_config`` synced with the unit's vent/sbc echo."""
@@ -222,6 +271,28 @@ class VentAxiaEconiqCoordinator:
 
         def _publish_and_wait() -> None:
             info = client.publish(topic, payload, qos=0)
+            info.wait_for_publish(timeout=5)
+            if not info.is_published():
+                raise HomeAssistantError(
+                    f"publish to {topic} did not complete within 5s"
+                )
+
+        await self.hass.async_add_executor_job(_publish_and_wait)
+
+    async def _publish_raw(self, topic_suffix: str, raw: str) -> None:
+        """Publish a bare (non-JSON) payload.
+
+        For topics taking a bare enum/number (``vent/daf``, ``vent/cm``) or a
+        literal string command (``vent/filtertmr/reset`` = ``Cleaned``).
+        ``_publish_payload`` JSON-encodes, which would wrongly quote these.
+        """
+        if self._client is None:
+            raise HomeAssistantError("Vent-Axia client not connected")
+        topic = f"{self.topic_prefix}/{topic_suffix}"
+        client = self._client
+
+        def _publish_and_wait() -> None:
+            info = client.publish(topic, raw, qos=0)
             info.wait_for_publish(timeout=5)
             if not info.is_published():
                 raise HomeAssistantError(
@@ -447,15 +518,23 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     indoor RH. Rename unique_ids and entity_id slugs in place so history and
     automations referencing `sensor.<unit>_indoor_humidity` survive and now
     point at the right data.
+
+    v2 → v3 (0.4.0): the user-override fan-mode select, the MVHR climate entity,
+    and the override-duration number are removed — airflow is now a single `fan`
+    entity (persistent ``vent/daf``) and the timed-override service carries its
+    own duration. Drop the obsolete registry rows (unique_id suffixes
+    ``_fan_mode`` / ``_climate`` / ``_override_duration``) so they don't linger
+    as "unavailable". (Breaking: dashboards/automations referencing the old
+    fan-mode select or the MVHR climate entity must move to ``fan.<unit>``.)
     """
     _LOGGER.info("Migrating Vent-Axia Econiq entry %s from v%s", entry.entry_id, entry.version)
 
-    if entry.version > 2:
+    if entry.version > 3:
         return False
 
-    if entry.version == 1:
-        from homeassistant.helpers import entity_registry as er
+    from homeassistant.helpers import entity_registry as er
 
+    if entry.version == 1:
         registry = er.async_get(hass)
         device_id = entry.data[CONF_TOPIC_PREFIX]
 
@@ -503,6 +582,24 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.config_entries.async_update_entry(entry, version=2)
 
+    if entry.version == 2:
+        registry = er.async_get(hass)
+        device_id = entry.data[CONF_TOPIC_PREFIX]
+        # v0.4: the fan_mode select + mvhr climate are replaced by one fan
+        # entity, and the override-duration number is removed (the timed-override
+        # service carries its own duration now). Drop the obsolete registry rows
+        # so they don't show as "unavailable". Idempotent: skip any already gone.
+        for platform, uid in (
+            ("select", f"{device_id}_fan_mode"),
+            ("climate", f"{device_id}_climate"),
+            ("number", f"{device_id}_override_duration"),
+        ):
+            eid = registry.async_get_entity_id(platform, DOMAIN, uid)
+            if eid is not None:
+                registry.async_remove(eid)
+                _LOGGER.info("v3 migration: removed obsolete %s (%s)", eid, uid)
+        hass.config_entries.async_update_entry(entry, version=3)
+
     return True
 
 
@@ -511,6 +608,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_start()
     # Keep the bypass-config cache synced with the unit's vent/sbc echo.
     coordinator.subscribe_topic(TOPIC_BYPASS_CONFIG, coordinator._on_bypass_echo)
+    # Cache model details for DeviceInfo (fw/model/serial).
+    coordinator.subscribe_topic(TOPIC_MODEL_DETAILS, coordinator._on_moddet)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await _async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
